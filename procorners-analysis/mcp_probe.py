@@ -257,8 +257,25 @@ def cmd_discover(_args) -> int:
 def cmd_call(args) -> int:
     _ensure_out()
     arguments = {}
-    if args.args:
-        arguments = json.loads(args.args)
+    raw_args = None
+    if getattr(args, "args_file", None):
+        with open(args.args_file, "r", encoding="utf-8-sig") as fh:
+            raw_args = fh.read().strip()
+    elif args.args:
+        raw_args = args.args.strip()
+    if raw_args:
+        try:
+            arguments = json.loads(raw_args)
+        except json.JSONDecodeError:
+            # تساهل مع اقتباس PowerShell: حوّل '...' إلى "..." إن لزم
+            try:
+                arguments = json.loads(raw_args.replace("'", '"'))
+            except json.JSONDecodeError as exc:
+                raise MCPError(
+                    f"تعذّر قراءة --args كـ JSON: {exc}\n"
+                    f"المستلَم: {raw_args!r}\n"
+                    "نصيحة: استخدم --args-file مع ملف يحوي JSON (أكثر أمانًا في PowerShell)."
+                )
     client = Client()
     client.handshake()
     result = client.call_tool(args.tool, arguments)
@@ -540,7 +557,9 @@ def main(argv: list[str]) -> int:
 
     p_call = sub.add_parser("call", help="نداء أداة واحدة")
     p_call.add_argument("tool", help="اسم الأداة")
-    p_call.add_argument("--args", help="وسائط JSON للأداة", default=None)
+    p_call.add_argument("--args", help="وسائط JSON للأداة (نص)", default=None)
+    p_call.add_argument("--args-file", dest="args_file", default=None,
+                        help="مسار ملف JSON للوسائط (أكثر أمانًا في PowerShell)")
     p_call.add_argument("--save", action="store_true", help="حفظ النتيجة في out/")
 
     p_pull = sub.add_parser("pull", help="سحب أفضل-جهد لأدوات القراءة الشائعة")
